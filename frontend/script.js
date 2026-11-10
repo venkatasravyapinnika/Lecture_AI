@@ -8,9 +8,11 @@ let listening = false;
 let transcript = "";
 let lastNotes = null;
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "https://lecture-ai-0n8q.onrender.com";
 
-const $ = id => document.getElementById(id);
+function $(id) {
+    return document.getElementById(id);
+}
 
 
 /* ==========================================
