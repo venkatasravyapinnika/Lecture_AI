@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LectureAI — AI Lecture Companion</title>
+
+<style>
+:root {
+  --bg:#0b0b16;
+  --panel:#141426;
+  --line:#2b2948;
+  --text:#f4f1ff;
+  --muted:#aaa5c4;
+  --purple:#9b72ff;
+  --pink:#e879f9;
+  --cyan:#71e5e2;
+  --green:#69ddb0;
+  --danger:#ff718d;
+  --shadow:0 18px 55px rgba(0,0,0,.28);
+}
+
+* { box-sizing:border-box; }
+
+body {
+  margin:0;
+  background:radial-gradient(ellipse at 75% -10%,#302052 0,transparent 38%),var(--bg);
+  color:var(--text);
+  font-family:Inter,system-ui,-apple-system,Segoe UI,Arial,sans-serif;
+}
+
+button,input,select,textarea { font:inherit; }
+button { cursor:pointer; }
+
+.app {
+  display:grid;
+  grid-template-columns:250px 1fr;
+  min-height:100vh;
+}
+
+.sidebar {
+  padding:26px 18px;
+  border-right:1px solid var(--line);
+  background:rgba(12,11,26,.78);
+  display:flex;
+  flex-direction:column;
+  gap:28px;
+}
+
+.brand {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:0 8px;
+}
+
+.brand-mark {
+  width:40px;
+  height:40px;
+  border-radius:13px;
+  background:linear-gradient(135deg,var(--purple),var(--pink));
+  display:grid;
+  place-items:center;
+  font-size:20px;
+}
+
+.brand strong { font-size:17px; }
+.brand small {
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  margin-top:2px;
+}
+
+.nav-label {
+  font-size:10px;
+  letter-spacing:1.5px;
+  color:#77718f;
+  padding:0 12px;
+  margin-bottom:8px;
+}
+
+.nav { display:grid; gap:7px; }
+
+.nav button {
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  text-align:left;
+  padding:12px;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-size:13px;
+}
+
+.nav button.active,
+.nav button:hover {
+  background:#282044;
+  color:white;
+}
+
+.nav .ico {
+  width:20px;
+  text-align:center;
+  font-size:16px;
+}
+
+.sidebar-bottom {
+  margin-top:auto;
+  background:linear-gradient(145deg,#28204a,#17172c);
+  border:1px solid #413365;
+  border-radius:16px;
+  padding:15px;
+}
+
+.sidebar-bottom b { font-size:13px; }
+
+.sidebar-bottom p {
+  font-size:11px;
+  line-height:1.5;
+  color:var(--muted);
+  margin:7px 0 12px;
+}
+
+.sidebar-bottom button {
+  width:100%;
+  border:0;
+  border-radius:9px;
+  padding:9px;
+  background:#9b72ff;
+  color:white;
+  font-weight:650;
+  font-size:12px;
+}
+
+main {
+  padding:30px clamp(18px,4vw,54px);
+  max-width:1500px;
+  width:100%;
+  margin:auto;
+}
+
+.topbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:15px;
+  margin-bottom:30px;
+}
+
+.eyebrow {
+  font-size:11px;
+  color:var(--cyan);
+  letter-spacing:1.8px;
+  text-transform:uppercase;
+  font-weight:700;
+}
+
+h1 {
+  font-size:clamp(25px,3vw,34px);
+  margin:8px 0 7px;
+}
+
+.subtitle {
+  color:var(--muted);
+  font-size:13px;
+}
+
+.profile {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.avatar {
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#32264f;
+  color:#e5d9ff;
+  border:1px solid #624a8c;
+}
+
+.hero {
+  display:grid;
+  grid-template-columns:1.3fr .7fr;
+  gap:18px;
+  margin-bottom:20px;
+}
+
+.card {
+  background:linear-gradient(145deg,rgba(27,25,51,.96),rgba(18,19,37,.96));
+  border:1px solid var(--line);
+  border-radius:19px;
+  box-shadow:var(--shadow);
+}
+
+.record-card {
+  padding:24px;
+  position:relative;
+  overflow:hidden;
+}
+
+.record-head {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+
+.record-head h2,
+.section-head h2 {
+  font-size:16px;
+  margin:0;
+}
+
+.live-pill {
+  font-size:10px;
+  color:var(--green);
+  border:1px solid #326b60;
+  background:#15352f;
+  padding:6px 9px;
+  border-radius:20px;
+}
+
+.record-center {
+  display:flex;
+  align-items:center;
+  gap:22px;
+  margin-top:25px;
+}
+
+.mic-button {
+  width:76px;
+  height:76px;
+  flex:none;
+  border:0;
+  border-radius:24px;
+  color:white;
+  font-size:28px;
+  background:linear-gradient(145deg,#a47bff,#7148d8);
+  box-shadow:0 12px 30px #875ee955;
+}
+
+.mic-button.recording {
+  background:linear-gradient(145deg,#ff7894,#d83d70);
+  animation:pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  50% { box-shadow:0 0 0 12px #ff789422; }
+}
+
+.record-copy h3 {
+  margin:0 0 6px;
+  font-size:17px;
+}
+
+.record-copy p {
+  margin:0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+
+.record-actions {
+  display:flex;
+  gap:9px;
+  flex-wrap:wrap;
+  margin-top:20px;
+}
+
+.btn {
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#211f3b;
+  color:#eae6ff;
+  padding:10px 14px;
+  font-size:12px;
+  font-weight:650;
+}
+
+.btn.primary {
+  background:linear-gradient(100deg,#956aff,#b16cf0);
+  border:0;
+  color:white;
+}
+
+.btn:disabled {
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.select {
+  background:#211f3b;
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:9px;
+  padding:9px;
+  font-size:12px;
+}
+
+.stats-card {
+  padding:22px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+}
+
+.stats-top {
+  display:flex;
+  justify-content:space-between;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.stat-number {
+  font-size:32px;
+  font-weight:750;
+  margin:17px 0 3px;
+}
+
+.stat-caption {
+  font-size:11px;
+  color:var(--muted);
+}
+
+.mini-bars {
+  height:42px;
+  display:flex;
+  align-items:end;
+  gap:6px;
+  margin-top:15px;
+}
+
+.mini-bars span {
+  flex:1;
+  border-radius:5px 5px 2px 2px;
+  background:linear-gradient(180deg,#d17bfa,#7554d7);
+}
+
+.workspace {
+  display:grid;
+  grid-template-columns:1.12fr .88fr;
+  gap:18px;
+}
+
+.section-card {
+  padding:20px;
+  min-height:330px;
+}
+
+.section-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:16px;
+}
+
+.section-head small {
+  color:var(--muted);
+  font-size:11px;
+}
+
+.transcript-box {
+  display:block;
+  width:100%;
+  min-height:220px;
+  padding:15px;
+  background:#101020;
+  border:1px solid #2b2945;
+  border-radius:12px;
+  color:#d9d5ec;
+  font-size:13px;
+  line-height:1.8;
+  resize:vertical;
+  outline:none;
+}
+
+.transcript-box:focus {
+  border-color:var(--purple);
+  box-shadow:0 0 0 2px #9b72ff22;
+}
+
+.transcript-box::placeholder {
+  color:#77728e;
+}
+
+.editor-hint {
+  font-size:11px;
+  line-height:1.5;
+  color:var(--muted);
+  margin:9px 2px 0;
+}
+
+.note-placeholder {
+  min-height:220px;
+  display:grid;
+  place-items:center;
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.7;
+  border:1px dashed #383452;
+  border-radius:12px;
+  padding:20px;
+}
+
+.note-placeholder span {
+  font-size:27px;
+  display:block;
+  margin-bottom:8px;
+}
+
+.notes-content {
+  font-size:13px;
+  line-height:1.7;
+  color:#dcd8ef;
+  max-height:420px;
+  overflow:auto;
+}
+
+.notes-content h3 {
+  color:#fff;
+  font-size:14px;
+  margin:17px 0 7px;
+}
+
+.notes-content ul {
+  padding-left:19px;
+  margin:5px 0;
+}
+
+.concept {
+  display:inline-block;
+  background:#282044;
+  border:1px solid #49376d;
+  color:#e7d9ff;
+  padding:6px 9px;
+  border-radius:8px;
+  margin:3px;
+  font-size:11px;
+}
+
+.bottom-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:18px;
+  margin-top:18px;
+}
+
+.chat-card,
+.revision-card {
+  padding:20px;
+  min-height:260px;
+}
+
+.chat-messages {
+  height:160px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+  margin-bottom:12px;
+}
+
+.message {
+  max-width:90%;
+  padding:10px 12px;
+  border-radius:12px;
+  background:#25213e;
+  font-size:12px;
+  line-height:1.6;
+}
+
+.message.user {
+  align-self:flex-end;
+  background:#493477;
+}
+
+.chat-input {
+  display:flex;
+  gap:8px;
+}
+
+.chat-input input {
+  min-width:0;
+  flex:1;
+  background:#101020;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:11px;
+  color:white;
+  font-size:12px;
+  outline:none;
+}
+
+.chat-input input:focus {
+  border-color:var(--purple);
+}
+
+.question {
+  border-bottom:1px solid var(--line);
+  padding:11px 0;
+  font-size:12px;
+  line-height:1.6;
+}
+
+.question button {
+  margin-top:7px;
+  border:0;
+  background:transparent;
+  color:var(--cyan);
+  padding:0;
+  font-size:11px;
+}
+
+.answer {
+  display:none;
+  color:var(--muted);
+  padding-top:7px;
+}
+
+/* My Lectures library */
+.save-row {
+  display:flex;
+  gap:9px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+
+.save-row input {
+  flex:1;
+  min-width:180px;
+  background:#101020;
+  border:1px solid var(--line);
+  border-radius:10px;
+  padding:10px 12px;
+  color:white;
+  font-size:12px;
+  outline:none;
+}
+
+.save-row input:focus {
+  border-color:var(--purple);
+}
+
+.library-card {
+  padding:20px;
+  margin-top:18px;
+}
+
+.lecture-list {
+  display:grid;
+  gap:10px;
+}
+
+.lecture-item {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:13px;
+  background:#101020;
+  border:1px solid var(--line);
+  border-radius:12px;
+}
+
+.lecture-item strong {
+  display:block;
+  font-size:13px;
+  margin-bottom:5px;
+}
+
+.lecture-item small {
+  color:var(--muted);
+  font-size:11px;
+}
+
+.lecture-actions {
+  display:flex;
+  gap:7px;
+  flex-wrap:wrap;
+}
+
+.btn.danger {
+  color:#ff9bad;
+  border-color:#71374b;
+  background:#321b2a;
+}
+
+.empty-library {
+  color:var(--muted);
+  font-size:12px;
+  padding:18px;
+  border:1px dashed #383452;
+  border-radius:12px;
+  text-align:center;
+}
+
+@media(max-width:520px) {
+  .lecture-item {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+}
+
+.status {
+  font-size:11px;
+  color:var(--muted);
+  margin-top:12px;
+  min-height:16px;
+}
+
+@media(max-width:900px) {
+  .app { grid-template-columns:1fr; }
+  .sidebar { display:none; }
+  main { padding:22px 16px; }
+  .hero,.workspace,.bottom-grid { grid-template-columns:1fr; }
+}
+
+@media(max-width:520px) {
+  .profile span { display:none; }
+  .record-center { align-items:flex-start; }
+  .mic-button {
+    width:62px;
+    height:62px;
+    border-radius:19px;
+  }
+  .record-card,.section-card,.chat-card,
+  .revision-card,.stats-card { padding:16px; }
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">✦</div>
+      <div>
+        <strong>LectureAI</strong>
+        <small>YOUR PERSONAL STUDY SPACE</small>
+      </div>
+    </div>
+
+    <div>
+      <div class="nav-label">WORKSPACE</div>
+      <nav class="nav">
+        <button class="active" onclick="scrollToSection('home')">⌂ Overview</button>
+        <button onclick="scrollToSection('capture')">◉ Capture lecture</button>
+        <button onclick="scrollToSection('notes')">▤ Smart notes</button>
+        <button onclick="scrollToSection('ask')">✧ Ask your lecture</button>
+        <button onclick="scrollToSection('revise')">◈ Revision room</button>
+        <button onclick="scrollToSection('library')">▣ My Lectures</button>
+      </nav>
+    </div>
+
+    <div class="sidebar-bottom">
+      <b>Study smarter, not longer.</b>
+      <p>Turn your lecture into clear notes, useful questions and focused revision.</p>
+      <button onclick="loadSample()">Insert demo lecture</button>
+    </div>
+  </aside>
+
+  <main id="home">
+
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">AI-POWERED LEARNING</div>
+        <h1>Your lecture, understood.</h1>
+        <div class="subtitle">Capture the important ideas. Let AI organize the rest.</div>
+      </div>
+      <div class="profile">
+        <span>Personal study space</span>
+        <div class="avatar">✦</div>
+      </div>
+    </header>
+
+    <section class="hero" id="capture">
+
+      <div class="card record-card">
+        <div class="record-head">
+          <h2>Capture a lecture</h2>
+          <span class="live-pill" id="recordState">● READY</span>
+        </div>
+
+        <div class="record-center">
+          <button class="mic-button" id="micBtn"
+            onclick="toggleMic()" aria-label="Start microphone">🎙</button>
+
+          <div class="record-copy">
+            <h3>Listen and transcribe</h3>
+            <p>Use your microphone to turn spoken lecture content into text in real time. You can also type or paste your own lecture below.</p>
+          </div>
+        </div>
+
+        <div class="record-actions">
+          <select class="select" id="lang" aria-label="Speech language">
+            <option value="en-IN">English (India)</option>
+            <option value="ta-IN">Tamil</option>
+            <option value="en-US">English (US)</option>
+          </select>
+
+          <button class="btn" onclick="loadSample()">Insert demo lecture</button>
+          <button class="btn" onclick="clearAll()">Clear session</button>
+        </div>
+
+        <div class="status" id="status">
+          Type or paste a lecture below, use the microphone, or insert the demo lecture to try the app.
+        </div>
+      </div>
+
+      <div class="card stats-card">
+        <div class="stats-top">
+          <span>SESSION SNAPSHOT</span>
+          <span>✦ LIVE</span>
+        </div>
+
+        <div>
+          <div class="stat-number" id="wordCount">0</div>
+          <div class="stat-caption">words in this session</div>
+        </div>
+
+        <div class="mini-bars">
+          <span style="height:25%"></span>
+          <span style="height:45%"></span>
+          <span style="height:34%"></span>
+          <span style="height:70%"></span>
+          <span style="height:52%"></span>
+          <span style="height:90%"></span>
+          <span style="height:64%"></span>
+          <span style="height:100%"></span>
+          <span style="height:75%"></span>
+          <span style="height:88%"></span>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="workspace">
+
+      <div class="card section-card">
+        <div class="section-head">
+          <h2>Lecture transcript</h2>
+          <small id="transcriptCount">0 words</small>
+        </div>
+
+        <textarea
+          id="transcript"
+          class="transcript-box"
+          placeholder="Type or paste your own lecture here. You can also use the microphone above. The demo lecture, if inserted, can be edited or deleted."
+          spellcheck="true"
+        ></textarea>
+
+        <div class="editor-hint">
+          This box is editable. Click inside it to type, paste, correct, or replace the lecture before generating notes.
+        </div>
+
+        <div class="record-actions">
+          <button class="btn primary" id="notesBtn" onclick="makeNotes()">
+            ✦ Generate study notes
+          </button>
+        </div>
+
+        <div class="save-row">
+          <input id="lectureTitle" type="text" maxlength="120" placeholder="Enter a title to save this lecture...">
+          <button class="btn" id="saveLectureBtn" onclick="saveLecture()">▣ Save lecture</button>
+        </div>
+      </div>
+
+      <div class="card section-card" id="notes">
+        <div class="section-head">
+          <h2>Smart notes</h2>
+          <small>AI-GENERATED</small>
+        </div>
+
+        <div id="notesContent" class="note-placeholder">
+          <div>
+            <span>✧</span>
+            Your structured notes, key concepts and summary will appear here.
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="bottom-grid">
+
+      <div class="card chat-card" id="ask">
+        <div class="section-head">
+          <h2>Ask your lecture</h2>
+          <small>CONVERSATIONAL AI</small>
+        </div>
+
+        <div class="chat-messages" id="chat">
+          <div class="message">
+            Hi! Once you have a transcript, ask me to explain a concept or clarify something from the lecture.
+          </div>
+        </div>
+
+        <div class="chat-input">
+          <input
+            id="questionInput"
+            placeholder="Ask something about this lecture..."
+            onkeydown="if(event.key==='Enter')ask()"
+          >
+          <button class="btn primary" onclick="ask()">Ask</button>
+        </div>
+      </div>
+
+      <div class="card revision-card" id="revise">
+        <div class="section-head">
+          <h2>Revision room</h2>
+          <small>PRACTICE</small>
+        </div>
+
+        <div id="revisionContent" class="note-placeholder" style="min-height:175px">
+          <div>
+            <span>◈</span>
+            Generate notes to create practice questions with answers.
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="card library-card" id="library">
+      <div class="section-head">
+        <h2>My Lectures</h2>
+        <button class="btn" onclick="loadLectures()">↻ Refresh</button>
+      </div>
+
+      <div id="lectureList" class="lecture-list">
+        <div class="empty-library">Loading your saved lectures...</div>
+      </div>
+
+      <div class="status" id="libraryStatus"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- JavaScript will be connected here in Part 2 -->
+<script src="script.js"></script>
+</body>
+</html>
