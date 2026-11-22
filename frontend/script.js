@@ -9,9 +9,257 @@ let transcript = "";
 let lastNotes = null;
 
 const API_URL = "https://lecture-ai-0n8q.onrender.com";
+const TOKEN_KEY = "lectureai_token";
+
+let authToken = localStorage.getItem(TOKEN_KEY);
+let currentUser = null;
 
 function $(id) {
     return document.getElementById(id);
+}
+
+
+/* ==========================================
+   AUTHENTICATION SCREEN
+   ========================================== */
+
+function createAuthScreen(message = "") {
+    if ($("authScreen")) return;
+
+    const screen = document.createElement("div");
+    screen.id = "authScreen";
+
+    Object.assign(screen.style, {
+        position: "fixed",
+        inset: "0",
+        zIndex: "9999",
+        background: "var(--bg, #F3EBDD)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: "20px",
+        overflowY: "auto"
+    });
+
+    screen.innerHTML = `
+        <div style="
+            width:100%;
+            max-width:420px;
+            background:var(--panel,#fff);
+            padding:35px;
+            border-radius:16px;
+            border:1px solid var(--line,#e2d6c4);
+            box-shadow:0 8px 30px rgba(0,0,0,0.08);
+        ">
+            <div style="text-align:center;margin-bottom:25px">
+                <h1 style="color:var(--green,#315b43);margin-bottom:8px">
+                    LectureAI
+                </h1>
+                <p id="authSubtitle" style="color:var(--muted,#777)">
+                    Sign in to continue to your lectures
+                </p>
+            </div>
+
+            <div id="authNameGroup" style="display:none;margin-bottom:15px">
+                <label style="display:block;margin-bottom:6px">Your name</label>
+                <input id="authName" type="text" placeholder="Enter your name"
+                    style="box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px">
+            </div>
+
+            <div style="margin-bottom:15px">
+                <label style="display:block;margin-bottom:6px">Email</label>
+                <input id="authEmail" type="email" placeholder="Enter your email"
+                    style="box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px">
+            </div>
+
+            <div style="margin-bottom:15px">
+                <label style="display:block;margin-bottom:6px">Password</label>
+                <input id="authPassword" type="password" placeholder="Enter your password"
+                    style="box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px">
+            </div>
+
+            <p id="authMessage" style="color:var(--danger,#b33);font-size:14px;min-height:20px">
+                ${escapeHTML(message)}
+            </p>
+
+            <button id="authSubmit" type="button"
+                style="width:100%;padding:13px;border:0;border-radius:8px;background:var(--green,#315b43);color:white;font-size:15px;cursor:pointer">
+                Sign In
+            </button>
+
+            <p style="text-align:center;margin-top:20px;font-size:14px">
+                <span id="authSwitchText">Don't have an account?</span>
+                <button id="authSwitch" type="button"
+                    style="border:0;background:none;color:var(--green,#315b43);font-weight:bold;cursor:pointer">
+                    Create account
+                </button>
+            </p>
+        </div>
+    `;
+
+    document.body.appendChild(screen);
+
+    let isRegister = false;
+
+    $("authSwitch").addEventListener("click", () => {
+        isRegister = !isRegister;
+
+        $("authNameGroup").style.display = isRegister ? "block" : "none";
+        $("authSubtitle").textContent = isRegister
+            ? "Create your personal LectureAI account"
+            : "Sign in to continue to your lectures";
+
+        $("authSubmit").textContent = isRegister
+            ? "Create Account"
+            : "Sign In";
+
+        $("authSwitchText").textContent = isRegister
+            ? "Already have an account?"
+            : "Don't have an account?";
+
+        $("authSwitch").textContent = isRegister
+            ? "Sign in"
+            : "Create account";
+
+        $("authMessage").textContent = "";
+    });
+
+    $("authSubmit").addEventListener("click", async () => {
+        const email = $("authEmail").value.trim();
+        const password = $("authPassword").value;
+        const name = $("authName").value.trim();
+
+        if (!email || !password) {
+            $("authMessage").textContent = "Please enter your email and password.";
+            return;
+        }
+
+        if (isRegister && !name) {
+            $("authMessage").textContent = "Please enter your name.";
+            return;
+        }
+
+        const button = $("authSubmit");
+        button.disabled = true;
+        button.textContent = "Please wait...";
+
+        try {
+            if (isRegister) {
+                await rawAuthRequest("/api/auth/register", {
+                    name,
+                    email,
+                    password
+                });
+            }
+
+            const data = await rawAuthRequest("/api/auth/login", {
+                email,
+                password
+            });
+
+            authToken = data.access_token;
+
+            if (!authToken) {
+                throw new Error("The server did not return an access token.");
+            }
+
+            localStorage.setItem(TOKEN_KEY, authToken);
+
+            await initializeUser();
+
+        } catch (error) {
+            $("authMessage").textContent = error.message;
+            button.disabled = false;
+            button.textContent = isRegister ? "Create Account" : "Sign In";
+        }
+    });
+}
+
+async function rawAuthRequest(path, body) {
+    let response;
+
+    try {
+        response = await fetch(API_URL + path, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+        });
+    } catch {
+        throw new Error("Cannot connect to the Render backend. Please try again.");
+    }
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(data.detail || "Authentication failed.");
+    }
+
+    return data;
+}
+
+async function initializeUser() {
+    try {
+        const user = await requestJSON("/api/auth/me");
+
+        currentUser = user;
+
+        $("authScreen")?.remove();
+
+        showUserDashboard();
+        await loadLectures();
+
+    } catch (error) {
+        authToken = null;
+        currentUser = null;
+        localStorage.removeItem(TOKEN_KEY);
+
+        createAuthScreen("Please sign in to continue.");
+    }
+}
+
+function showUserDashboard() {
+    const nav = document.querySelector(".nav");
+
+    if (!nav || $("userAccountArea")) return;
+
+    const account = document.createElement("div");
+    account.id = "userAccountArea";
+    account.style.marginTop = "20px";
+    account.style.padding = "12px";
+
+    account.innerHTML = `
+        <div style="font-size:13px;margin-bottom:10px;color:var(--muted)">
+            Signed in as
+            <strong style="display:block;color:var(--text)">
+                ${escapeHTML(currentUser.name || currentUser.email || "User")}
+            </strong>
+        </div>
+        <button id="logoutBtn" type="button"
+            style="padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--text);cursor:pointer">
+            Log Out
+        </button>
+    `;
+
+    nav.appendChild(account);
+
+    $("logoutBtn").addEventListener("click", logout);
+}
+
+function logout() {
+    if (listening) stopMic();
+
+    localStorage.removeItem(TOKEN_KEY);
+
+    authToken = null;
+    currentUser = null;
+    lastNotes = null;
+    transcript = "";
+
+    $("userAccountArea")?.remove();
+
+    createAuthScreen("You have signed out successfully.");
 }
 
 
@@ -89,17 +337,13 @@ function toggleMic() {
         window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        setStatus(
-            "Speech recognition is not supported. Please use Google Chrome.",
-            true
-        );
+        setStatus("Speech recognition is not supported. Please use Google Chrome.", true);
         return;
     }
 
     syncTranscriptFromEditor();
 
     recognition = new SpeechRecognition();
-
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = $("lang").value;
@@ -107,13 +351,8 @@ function toggleMic() {
     recognition.onresult = event => {
         let interim = "";
 
-        for (
-            let i = event.resultIndex;
-            i < event.results.length;
-            i++
-        ) {
-            const spokenText =
-                event.results[i][0].transcript.trim();
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const spokenText = event.results[i][0].transcript.trim();
 
             if (event.results[i].isFinal && spokenText) {
                 transcript += (transcript ? " " : "") + spokenText;
@@ -188,11 +427,9 @@ function stopMic() {
    ========================================== */
 
 function loadSample() {
-    if (listening) {
-        stopMic();
-    }
+    if (listening) stopMic();
 
-    const demoText =
+    transcript =
         "Today we will learn about photosynthesis. " +
         "Photosynthesis is the process plants use to make food from sunlight. " +
         "It happens inside chloroplasts, which contain a green pigment called chlorophyll. " +
@@ -206,10 +443,7 @@ function loadSample() {
         "Second, the Calvin cycle, which happens in the stroma and uses ATP to build glucose. " +
         "Factors that affect photosynthesis are light intensity, carbon dioxide level, and temperature.";
 
-    transcript = demoText;
-
     updateTranscript();
-
     $("transcript").focus();
 
     setStatus("Demo lecture inserted. You can edit or replace this text.");
@@ -221,9 +455,7 @@ function loadSample() {
    ========================================== */
 
 function clearAll() {
-    if (listening) {
-        stopMic();
-    }
+    if (listening) stopMic();
 
     transcript = "";
     lastNotes = null;
@@ -249,18 +481,27 @@ function clearAll() {
 
 
 /* ==========================================
-   API CONNECTION
+   API CONNECTION WITH AUTHENTICATION
    ========================================== */
 
 async function requestJSON(path, options = {}) {
+    const headers = {
+        ...(options.headers || {})
+    };
+
+    if (authToken) {
+        headers.Authorization = "Bearer " + authToken;
+    }
+
     let response;
 
     try {
-        response = await fetch(API_URL + path, options);
-    } catch (error) {
-        throw new Error(
-            "Cannot connect to the backend. Make sure FastAPI is running."
-        );
+        response = await fetch(API_URL + path, {
+            ...options,
+            headers
+        });
+    } catch {
+        throw new Error("Cannot connect to the Render backend. Please try again.");
     }
 
     const contentType = response.headers.get("content-type") || "";
@@ -274,10 +515,9 @@ async function requestJSON(path, options = {}) {
     }
 
     if (!response.ok) {
-        const detail =
-            typeof data === "object"
-                ? data.detail || data.error
-                : data;
+        const detail = typeof data === "object"
+            ? data.detail || data.error
+            : data;
 
         throw new Error(detail || "The server returned an error.");
     }
@@ -304,10 +544,7 @@ async function makeNotes() {
     syncTranscriptFromEditor();
 
     if (transcript.trim().length < 20) {
-        setStatus(
-            "Please enter a lecture of at least 20 characters.",
-            true
-        );
+        setStatus("Please enter a lecture of at least 20 characters.", true);
         return;
     }
 
@@ -395,10 +632,8 @@ function renderNotes(data) {
 function renderRevision(questions) {
     if (!questions || questions.length === 0) {
         $("revisionContent").className = "note-placeholder";
-
         $("revisionContent").textContent =
             "No practice questions were returned. Try generating notes again.";
-
         return;
     }
 
@@ -408,12 +643,9 @@ function renderRevision(questions) {
         <div class="question">
             <b>Q${index + 1}. ${escapeHTML(item.q)}</b>
             <br>
-
-            <button type="button"
-                onclick="toggleAnswer(this)">
+            <button type="button" onclick="toggleAnswer(this)">
                 Show / hide answer
             </button>
-
             <div class="answer">
                 ${escapeHTML(item.a)}
             </div>
@@ -425,9 +657,7 @@ function toggleAnswer(button) {
     const answer = button.nextElementSibling;
 
     answer.style.display =
-        answer.style.display === "block"
-            ? "none"
-            : "block";
+        answer.style.display === "block" ? "none" : "block";
 }
 
 
@@ -440,9 +670,7 @@ async function ask() {
 
     const question = $("questionInput").value.trim();
 
-    if (!question) {
-        return;
-    }
+    if (!question) return;
 
     if (!transcript.trim()) {
         setStatus("Add a lecture transcript before asking questions.", true);
@@ -497,16 +725,13 @@ async function ask() {
 
 function setLibraryStatus(message, isError = false) {
     $("libraryStatus").textContent = message;
-
     $("libraryStatus").style.color = isError
         ? "var(--danger)"
         : "var(--muted)";
 }
 
 function formatLectureDate(value) {
-    if (!value) {
-        return "Date unavailable";
-    }
+    if (!value) return "Date unavailable";
 
     const date = new Date(value);
 
@@ -524,10 +749,7 @@ async function saveLecture() {
     syncTranscriptFromEditor();
 
     if (transcript.trim().length < 20) {
-        setStatus(
-            "Add a lecture transcript of at least 20 characters before saving.",
-            true
-        );
+        setStatus("Add a lecture transcript of at least 20 characters before saving.", true);
         return;
     }
 
@@ -535,12 +757,7 @@ async function saveLecture() {
 
     if (!title) {
         $("lectureTitle").focus();
-
-        setStatus(
-            "Please enter a title for this lecture before saving.",
-            true
-        );
-
+        setStatus("Please enter a title for this lecture before saving.", true);
         return;
     }
 
@@ -557,7 +774,6 @@ async function saveLecture() {
         });
 
         setStatus("Lecture saved successfully: " + result.title);
-
         setLibraryStatus("Your lecture was saved.");
 
         $("lectureTitle").value = "";
@@ -566,7 +782,6 @@ async function saveLecture() {
 
     } catch (error) {
         setStatus("Could not save lecture: " + error.message, true);
-
         setLibraryStatus(error.message, true);
 
     } finally {
@@ -589,9 +804,9 @@ async function loadLectures() {
     try {
         const data = await requestJSON("/api/lectures");
 
-const lectures = Array.isArray(data)
-    ? data
-    : (data.lectures || []);
+        const lectures = Array.isArray(data)
+            ? data
+            : (data.lectures || []);
 
         if (!Array.isArray(lectures) || lectures.length === 0) {
             list.innerHTML = `
@@ -606,10 +821,8 @@ const lectures = Array.isArray(data)
 
         list.innerHTML = lectures.map(lecture => `
             <div class="lecture-item">
-
                 <div>
                     <strong>${escapeHTML(lecture.title)}</strong>
-
                     <small>
                         Saved: ${escapeHTML(formatLectureDate(lecture.created_at))}
                         · ID: ${Number(lecture.id)}
@@ -617,33 +830,28 @@ const lectures = Array.isArray(data)
                 </div>
 
                 <div class="lecture-actions">
-                    <button
-                        class="btn primary"
+                    <button class="btn primary"
                         onclick="openLecture(${Number(lecture.id)})">
                         Open
                     </button>
 
-                    <button
-                        class="btn danger"
+                    <button class="btn danger"
                         onclick="deleteLecture(${Number(lecture.id)})">
                         Delete
                     </button>
                 </div>
-
             </div>
         `).join("");
 
         setLibraryStatus(
             lectures.length +
-            (lectures.length === 1
-                ? " saved lecture."
-                : " saved lectures.")
+            (lectures.length === 1 ? " saved lecture." : " saved lectures.")
         );
 
     } catch (error) {
         list.innerHTML = `
             <div class="empty-library">
-                Could not load saved lectures. Check that the backend is running.
+                Could not load saved lectures. Please try again.
             </div>
         `;
 
@@ -662,9 +870,7 @@ async function openLecture(id) {
             "/api/lectures/" + encodeURIComponent(id)
         );
 
-        if (listening) {
-            stopMic();
-        }
+        if (listening) stopMic();
 
         transcript = lecture.transcript || "";
         lastNotes = lecture.notes || null;
@@ -675,25 +881,16 @@ async function openLecture(id) {
 
         if (lastNotes) {
             renderNotes(lastNotes);
-
             renderRevision(lastNotes.questions || []);
         } else {
             $("notesContent").className = "note-placeholder";
-
             $("notesContent").innerHTML = `
-                <div>
-                    <span>✧</span>
-                    No saved AI notes for this lecture yet.
-                </div>
+                <div><span>✧</span>No saved AI notes for this lecture yet.</div>
             `;
 
             $("revisionContent").className = "note-placeholder";
-
             $("revisionContent").innerHTML = `
-                <div>
-                    <span>◈</span>
-                    No saved revision questions for this lecture.
-                </div>
+                <div><span>◈</span>No saved revision questions for this lecture.</div>
             `;
         }
 
@@ -706,14 +903,10 @@ async function openLecture(id) {
         $("questionInput").value = "";
 
         setStatus("Opened saved lecture: " + lecture.title);
-
         scrollToSection("capture");
 
     } catch (error) {
-        setLibraryStatus(
-            "Could not open lecture: " + error.message,
-            true
-        );
+        setLibraryStatus("Could not open lecture: " + error.message, true);
     }
 }
 
@@ -723,39 +916,98 @@ async function openLecture(id) {
    ========================================== */
 
 async function deleteLecture(id) {
-    const confirmed = confirm(
-        "Delete this saved lecture permanently?"
-    );
+    const confirmed = confirm("Delete this saved lecture permanently?");
 
-    if (!confirmed) {
-        return;
-    }
+    if (!confirmed) return;
 
     try {
         await requestJSON(
             "/api/lectures/" + encodeURIComponent(id),
-            {
-                method: "DELETE"
-            }
+            { method: "DELETE" }
         );
 
         setLibraryStatus("Lecture deleted successfully.");
-
         await loadLectures();
 
     } catch (error) {
-        setLibraryStatus(
-            "Could not delete lecture: " + error.message,
-            true
-        );
+        setLibraryStatus("Could not delete lecture: " + error.message, true);
     }
 }
 
 
 /* ==========================================
-   LOAD LIBRARY WHEN PAGE OPENS
+   AUTHENTICATION WHEN PAGE OPENS
    ========================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
-    loadLectures();
+    if (authToken) {
+        initializeUser();
+    } else {
+        createAuthScreen();
+    }
 });
+
+
+/* ==========================================
+   ACTIVE SIDEBAR NAVIGATION
+   ========================================== */
+
+const navButtons = document.querySelectorAll(".nav button");
+
+const navSections = [
+    "capture",
+    "notes",
+    "ask",
+    "revise",
+    "library"
+];
+
+function updateActiveNavigation() {
+    let currentSection = "home";
+
+    navSections.forEach(sectionId => {
+        const section = document.getElementById(sectionId);
+
+        if (section) {
+            const position = section.getBoundingClientRect().top;
+
+            if (position <= 180) {
+                currentSection = sectionId;
+            }
+        }
+    });
+
+    navButtons.forEach(button => {
+        button.classList.remove("active");
+
+        if (button.dataset.section === currentSection) {
+            button.classList.add("active");
+        }
+    });
+}
+
+window.addEventListener("scroll", updateActiveNavigation);
+
+navButtons.forEach(button => {
+    button.addEventListener("click", () => {
+        navButtons.forEach(btn => btn.classList.remove("active"));
+        button.classList.add("active");
+    });
+});
+
+
+/* ==========================================
+   SERVICE WORKER
+   ========================================== */
+
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js")
+            .then(() => {
+                console.log("LectureAI service worker registered");
+            })
+            .catch(error => {
+                console.error("Service worker registration failed:", error);
+            });
+    });
+}
