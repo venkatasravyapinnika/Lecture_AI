@@ -1,0 +1,25 @@
+{
+  "name": "ai_lecturer",
+  "version": "1.0.0",
+  "description": "LectureAI is an AI-powered learning assistant designed to help students understand and revise classroom lectures more effectively.",
+  "main": "main.js",
+"scripts": {
+  "start": "electron ."
+
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/venkatasravyapinnika/Lecture_AI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/venkatasravyapinnika/Lecture_AI/issues"
+  },
+  "homepage": "https://github.com/venkatasravyapinnika/Lecture_AI#readme",
+  "devDependencies": {
+    "electron": "^45.4.1"
+  }
+}

@@ -12,3 +12,5 @@ venv/
 
 # Local database
 *.db
+
+node_modules/

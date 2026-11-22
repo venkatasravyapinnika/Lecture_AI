@@ -1,6 +1,7 @@
 
 /* ==========================================
    LECTUREAI - FRONTEND JAVASCRIPT
+   NO LOGIN / NO AUTHENTICATION
    ========================================== */
 
 let recognition = null;
@@ -9,257 +10,9 @@ let transcript = "";
 let lastNotes = null;
 
 const API_URL = "https://lecture-ai-0n8q.onrender.com";
-const TOKEN_KEY = "lectureai_token";
-
-let authToken = localStorage.getItem(TOKEN_KEY);
-let currentUser = null;
 
 function $(id) {
     return document.getElementById(id);
-}
-
-
-/* ==========================================
-   AUTHENTICATION SCREEN
-   ========================================== */
-
-function createAuthScreen(message = "") {
-    if ($("authScreen")) return;
-
-    const screen = document.createElement("div");
-    screen.id = "authScreen";
-
-    Object.assign(screen.style, {
-        position: "fixed",
-        inset: "0",
-        zIndex: "9999",
-        background: "var(--bg, #F3EBDD)",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "20px",
-        overflowY: "auto"
-    });
-
-    screen.innerHTML = `
-        <div style="
-            width:100%;
-            max-width:420px;
-            background:var(--panel,#fff);
-            padding:35px;
-            border-radius:16px;
-            border:1px solid var(--line,#e2d6c4);
-            box-shadow:0 8px 30px rgba(0,0,0,0.08);
-        ">
-            <div style="text-align:center;margin-bottom:25px">
-                <h1 style="color:var(--green,#315b43);margin-bottom:8px">
-                    LectureAI
-                </h1>
-                <p id="authSubtitle" style="color:var(--muted,#777)">
-                    Sign in to continue to your lectures
-                </p>
-            </div>
-
-            <div id="authNameGroup" style="display:none;margin-bottom:15px">
-                <label style="display:block;margin-bottom:6px">Your name</label>
-                <input id="authName" type="text" placeholder="Enter your name"
-                    style="box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px">
-            </div>
-
-            <div style="margin-bottom:15px">
-                <label style="display:block;margin-bottom:6px">Email</label>
-                <input id="authEmail" type="email" placeholder="Enter your email"
-                    style="box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px">
-            </div>
-
-            <div style="margin-bottom:15px">
-                <label style="display:block;margin-bottom:6px">Password</label>
-                <input id="authPassword" type="password" placeholder="Enter your password"
-                    style="box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--line,#ddd);border-radius:8px">
-            </div>
-
-            <p id="authMessage" style="color:var(--danger,#b33);font-size:14px;min-height:20px">
-                ${escapeHTML(message)}
-            </p>
-
-            <button id="authSubmit" type="button"
-                style="width:100%;padding:13px;border:0;border-radius:8px;background:var(--green,#315b43);color:white;font-size:15px;cursor:pointer">
-                Sign In
-            </button>
-
-            <p style="text-align:center;margin-top:20px;font-size:14px">
-                <span id="authSwitchText">Don't have an account?</span>
-                <button id="authSwitch" type="button"
-                    style="border:0;background:none;color:var(--green,#315b43);font-weight:bold;cursor:pointer">
-                    Create account
-                </button>
-            </p>
-        </div>
-    `;
-
-    document.body.appendChild(screen);
-
-    let isRegister = false;
-
-    $("authSwitch").addEventListener("click", () => {
-        isRegister = !isRegister;
-
-        $("authNameGroup").style.display = isRegister ? "block" : "none";
-        $("authSubtitle").textContent = isRegister
-            ? "Create your personal LectureAI account"
-            : "Sign in to continue to your lectures";
-
-        $("authSubmit").textContent = isRegister
-            ? "Create Account"
-            : "Sign In";
-
-        $("authSwitchText").textContent = isRegister
-            ? "Already have an account?"
-            : "Don't have an account?";
-
-        $("authSwitch").textContent = isRegister
-            ? "Sign in"
-            : "Create account";
-
-        $("authMessage").textContent = "";
-    });
-
-    $("authSubmit").addEventListener("click", async () => {
-        const email = $("authEmail").value.trim();
-        const password = $("authPassword").value;
-        const name = $("authName").value.trim();
-
-        if (!email || !password) {
-            $("authMessage").textContent = "Please enter your email and password.";
-            return;
-        }
-
-        if (isRegister && !name) {
-            $("authMessage").textContent = "Please enter your name.";
-            return;
-        }
-
-        const button = $("authSubmit");
-        button.disabled = true;
-        button.textContent = "Please wait...";
-
-        try {
-            if (isRegister) {
-                await rawAuthRequest("/api/auth/register", {
-                    name,
-                    email,
-                    password
-                });
-            }
-
-            const data = await rawAuthRequest("/api/auth/login", {
-                email,
-                password
-            });
-
-            authToken = data.access_token;
-
-            if (!authToken) {
-                throw new Error("The server did not return an access token.");
-            }
-
-            localStorage.setItem(TOKEN_KEY, authToken);
-
-            await initializeUser();
-
-        } catch (error) {
-            $("authMessage").textContent = error.message;
-            button.disabled = false;
-            button.textContent = isRegister ? "Create Account" : "Sign In";
-        }
-    });
-}
-
-async function rawAuthRequest(path, body) {
-    let response;
-
-    try {
-        response = await fetch(API_URL + path, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(body)
-        });
-    } catch {
-        throw new Error("Cannot connect to the Render backend. Please try again.");
-    }
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-        throw new Error(data.detail || "Authentication failed.");
-    }
-
-    return data;
-}
-
-async function initializeUser() {
-    try {
-        const user = await requestJSON("/api/auth/me");
-
-        currentUser = user;
-
-        $("authScreen")?.remove();
-
-        showUserDashboard();
-        await loadLectures();
-
-    } catch (error) {
-        authToken = null;
-        currentUser = null;
-        localStorage.removeItem(TOKEN_KEY);
-
-        createAuthScreen("Please sign in to continue.");
-    }
-}
-
-function showUserDashboard() {
-    const nav = document.querySelector(".nav");
-
-    if (!nav || $("userAccountArea")) return;
-
-    const account = document.createElement("div");
-    account.id = "userAccountArea";
-    account.style.marginTop = "20px";
-    account.style.padding = "12px";
-
-    account.innerHTML = `
-        <div style="font-size:13px;margin-bottom:10px;color:var(--muted)">
-            Signed in as
-            <strong style="display:block;color:var(--text)">
-                ${escapeHTML(currentUser.name || currentUser.email || "User")}
-            </strong>
-        </div>
-        <button id="logoutBtn" type="button"
-            style="padding:9px 14px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--text);cursor:pointer">
-            Log Out
-        </button>
-    `;
-
-    nav.appendChild(account);
-
-    $("logoutBtn").addEventListener("click", logout);
-}
-
-function logout() {
-    if (listening) stopMic();
-
-    localStorage.removeItem(TOKEN_KEY);
-
-    authToken = null;
-    currentUser = null;
-    lastNotes = null;
-    transcript = "";
-
-    $("userAccountArea")?.remove();
-
-    createAuthScreen("You have signed out successfully.");
 }
 
 
@@ -269,6 +22,7 @@ function logout() {
 
 function setStatus(message, isError = false) {
     $("status").textContent = message;
+
     $("status").style.color = isError
         ? "var(--danger)"
         : "var(--muted)";
@@ -307,7 +61,10 @@ function updateTranscript() {
 
 $("transcript").addEventListener("input", () => {
     syncTranscriptFromEditor();
-    setStatus("Transcript updated. You can generate notes from this text.");
+
+    setStatus(
+        "Transcript updated. You can generate notes from this text."
+    );
 });
 
 function scrollToSection(id) {
@@ -337,13 +94,17 @@ function toggleMic() {
         window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-        setStatus("Speech recognition is not supported. Please use Google Chrome.", true);
+        setStatus(
+            "Speech recognition is not supported. Please use Google Chrome.",
+            true
+        );
         return;
     }
 
     syncTranscriptFromEditor();
 
     recognition = new SpeechRecognition();
+
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = $("lang").value;
@@ -352,7 +113,8 @@ function toggleMic() {
         let interim = "";
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-            const spokenText = event.results[i][0].transcript.trim();
+            const spokenText =
+                event.results[i][0].transcript.trim();
 
             if (event.results[i].isFinal && spokenText) {
                 transcript += (transcript ? " " : "") + spokenText;
@@ -394,10 +156,15 @@ function toggleMic() {
         $("recordState").textContent = "● LISTENING";
         $("recordState").style.color = "var(--danger)";
 
-        setStatus("Listening... Speak clearly. Click Stop when finished.");
+        setStatus(
+            "Listening... Speak clearly. Click Stop when finished."
+        );
 
     } catch (error) {
-        setStatus("Could not start microphone: " + error.message, true);
+        setStatus(
+            "Could not start microphone: " + error.message,
+            true
+        );
     }
 }
 
@@ -418,7 +185,9 @@ function stopMic() {
 
     syncTranscriptFromEditor();
 
-    setStatus("Recording stopped. You can edit the transcript or generate notes.");
+    setStatus(
+        "Recording stopped. You can edit the transcript or generate notes."
+    );
 }
 
 
@@ -444,9 +213,12 @@ function loadSample() {
         "Factors that affect photosynthesis are light intensity, carbon dioxide level, and temperature.";
 
     updateTranscript();
+
     $("transcript").focus();
 
-    setStatus("Demo lecture inserted. You can edit or replace this text.");
+    setStatus(
+        "Demo lecture inserted. You can edit or replace this text."
+    );
 }
 
 
@@ -463,10 +235,12 @@ function clearAll() {
     updateTranscript();
 
     $("notesContent").className = "note-placeholder";
+
     $("notesContent").innerHTML =
         "<div><span>✧</span>Your structured notes, key concepts and summary will appear here.</div>";
 
     $("revisionContent").className = "note-placeholder";
+
     $("revisionContent").innerHTML =
         "<div><span>◈</span>Generate notes to create practice questions with answers.</div>";
 
@@ -476,35 +250,35 @@ function clearAll() {
     $("questionInput").value = "";
     $("lectureTitle").value = "";
 
-    setStatus("Session cleared. You can now add a new lecture.");
+    setStatus(
+        "Session cleared. You can now add a new lecture."
+    );
 }
 
 
 /* ==========================================
-   API CONNECTION WITH AUTHENTICATION
+   API CONNECTION - NO AUTHENTICATION
    ========================================== */
 
 async function requestJSON(path, options = {}) {
-    const headers = {
-        ...(options.headers || {})
-    };
-
-    if (authToken) {
-        headers.Authorization = "Bearer " + authToken;
-    }
-
     let response;
 
     try {
         response = await fetch(API_URL + path, {
             ...options,
-            headers
+            headers: {
+                ...(options.headers || {})
+            }
         });
+
     } catch {
-        throw new Error("Cannot connect to the Render backend. Please try again.");
+        throw new Error(
+            "Cannot connect to the backend. Please check whether the server is running."
+        );
     }
 
-    const contentType = response.headers.get("content-type") || "";
+    const contentType =
+        response.headers.get("content-type") || "";
 
     let data;
 
@@ -519,7 +293,9 @@ async function requestJSON(path, options = {}) {
             ? data.detail || data.error
             : data;
 
-        throw new Error(detail || "The server returned an error.");
+        throw new Error(
+            detail || "The server returned an error."
+        );
     }
 
     return data;
@@ -544,7 +320,10 @@ async function makeNotes() {
     syncTranscriptFromEditor();
 
     if (transcript.trim().length < 20) {
-        setStatus("Please enter a lecture of at least 20 characters.", true);
+        setStatus(
+            "Please enter a lecture of at least 20 characters.",
+            true
+        );
         return;
     }
 
@@ -554,6 +333,7 @@ async function makeNotes() {
     button.textContent = "Generating...";
 
     $("notesContent").className = "note-placeholder";
+
     $("notesContent").textContent =
         "Gemini is organizing your lecture into study materials...";
 
@@ -569,7 +349,9 @@ async function makeNotes() {
         renderNotes(data);
         renderRevision(data.questions || []);
 
-        setStatus("Your notes and practice questions are ready.");
+        setStatus(
+            "Your notes and practice questions are ready."
+        );
 
     } catch (error) {
         $("notesContent").textContent =
@@ -632,8 +414,10 @@ function renderNotes(data) {
 function renderRevision(questions) {
     if (!questions || questions.length === 0) {
         $("revisionContent").className = "note-placeholder";
+
         $("revisionContent").textContent =
             "No practice questions were returned. Try generating notes again.";
+
         return;
     }
 
@@ -673,7 +457,10 @@ async function ask() {
     if (!question) return;
 
     if (!transcript.trim()) {
-        setStatus("Add a lecture transcript before asking questions.", true);
+        setStatus(
+            "Add a lecture transcript before asking questions.",
+            true
+        );
         return;
     }
 
@@ -725,6 +512,7 @@ async function ask() {
 
 function setLibraryStatus(message, isError = false) {
     $("libraryStatus").textContent = message;
+
     $("libraryStatus").style.color = isError
         ? "var(--danger)"
         : "var(--muted)";
@@ -749,7 +537,10 @@ async function saveLecture() {
     syncTranscriptFromEditor();
 
     if (transcript.trim().length < 20) {
-        setStatus("Add a lecture transcript of at least 20 characters before saving.", true);
+        setStatus(
+            "Add a lecture transcript of at least 20 characters before saving.",
+            true
+        );
         return;
     }
 
@@ -757,7 +548,12 @@ async function saveLecture() {
 
     if (!title) {
         $("lectureTitle").focus();
-        setStatus("Please enter a title for this lecture before saving.", true);
+
+        setStatus(
+            "Please enter a title for this lecture before saving.",
+            true
+        );
+
         return;
     }
 
@@ -773,7 +569,10 @@ async function saveLecture() {
             notes: lastNotes
         });
 
-        setStatus("Lecture saved successfully: " + result.title);
+        setStatus(
+            "Lecture saved successfully: " + result.title
+        );
+
         setLibraryStatus("Your lecture was saved.");
 
         $("lectureTitle").value = "";
@@ -781,7 +580,11 @@ async function saveLecture() {
         await loadLectures();
 
     } catch (error) {
-        setStatus("Could not save lecture: " + error.message, true);
+        setStatus(
+            "Could not save lecture: " + error.message,
+            true
+        );
+
         setLibraryStatus(error.message, true);
 
     } finally {
@@ -816,6 +619,7 @@ async function loadLectures() {
             `;
 
             setLibraryStatus("0 saved lectures.");
+
             return;
         }
 
@@ -823,6 +627,7 @@ async function loadLectures() {
             <div class="lecture-item">
                 <div>
                     <strong>${escapeHTML(lecture.title)}</strong>
+
                     <small>
                         Saved: ${escapeHTML(formatLectureDate(lecture.created_at))}
                         · ID: ${Number(lecture.id)}
@@ -845,7 +650,9 @@ async function loadLectures() {
 
         setLibraryStatus(
             lectures.length +
-            (lectures.length === 1 ? " saved lecture." : " saved lectures.")
+            (lectures.length === 1
+                ? " saved lecture."
+                : " saved lectures.")
         );
 
     } catch (error) {
@@ -882,13 +689,16 @@ async function openLecture(id) {
         if (lastNotes) {
             renderNotes(lastNotes);
             renderRevision(lastNotes.questions || []);
+
         } else {
             $("notesContent").className = "note-placeholder";
+
             $("notesContent").innerHTML = `
                 <div><span>✧</span>No saved AI notes for this lecture yet.</div>
             `;
 
             $("revisionContent").className = "note-placeholder";
+
             $("revisionContent").innerHTML = `
                 <div><span>◈</span>No saved revision questions for this lecture.</div>
             `;
@@ -903,10 +713,14 @@ async function openLecture(id) {
         $("questionInput").value = "";
 
         setStatus("Opened saved lecture: " + lecture.title);
+
         scrollToSection("capture");
 
     } catch (error) {
-        setLibraryStatus("Could not open lecture: " + error.message, true);
+        setLibraryStatus(
+            "Could not open lecture: " + error.message,
+            true
+        );
     }
 }
 
@@ -916,7 +730,9 @@ async function openLecture(id) {
    ========================================== */
 
 async function deleteLecture(id) {
-    const confirmed = confirm("Delete this saved lecture permanently?");
+    const confirmed = confirm(
+        "Delete this saved lecture permanently?"
+    );
 
     if (!confirmed) return;
 
@@ -927,24 +743,24 @@ async function deleteLecture(id) {
         );
 
         setLibraryStatus("Lecture deleted successfully.");
+
         await loadLectures();
 
     } catch (error) {
-        setLibraryStatus("Could not delete lecture: " + error.message, true);
+        setLibraryStatus(
+            "Could not delete lecture: " + error.message,
+            true
+        );
     }
 }
 
 
 /* ==========================================
-   AUTHENTICATION WHEN PAGE OPENS
+   PAGE STARTUP - DIRECT DASHBOARD
    ========================================== */
 
 document.addEventListener("DOMContentLoaded", () => {
-    if (authToken) {
-        initializeUser();
-    } else {
-        createAuthScreen();
-    }
+    loadLectures();
 });
 
 
@@ -1007,7 +823,10 @@ if ("serviceWorker" in navigator) {
                 console.log("LectureAI service worker registered");
             })
             .catch(error => {
-                console.error("Service worker registration failed:", error);
+                console.error(
+                    "Service worker registration failed:",
+                    error
+                );
             });
     });
 }
