@@ -11,6 +11,7 @@ let lastNotes = null;
 
 const API_URL = "https://lecture-ai-0n8q.onrender.com";
 
+
 function $(id) {
     return document.getElementById(id);
 }
