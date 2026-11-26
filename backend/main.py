@@ -5,7 +5,8 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from google.genai import types
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -399,3 +400,64 @@ def delete_lecture(lecture_id: int):
     return {
         "message": "Lecture deleted successfully."
     }
+
+
+# --------------------------------------------------
+# MICROPHONE TRANSCRIPTION
+# --------------------------------------------------
+
+@app.post("/transcribe")
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    language: str = Form("en")
+):
+    try:
+        audio_data = await file.read()
+
+        if not audio_data:
+            raise HTTPException(
+                status_code=400,
+                detail="No audio received."
+            )
+
+        mime_type = file.content_type or "audio/webm"
+
+        prompt = f"""
+        Transcribe this audio accurately.
+        The expected language is {language}.
+        Return only the spoken words as text.
+        Do not add explanations.
+        """
+
+        response = client.models.generate_content(
+            model=MODEL,
+            contents=[
+                prompt,
+                types.Part.from_bytes(
+                    data=audio_data,
+                    mime_type=mime_type
+                )
+            ]
+        )
+
+        transcription = response.text or ""
+
+        if not transcription.strip():
+            raise HTTPException(
+                status_code=502,
+                detail="No transcription was returned."
+            )
+
+        return {"text": transcription.strip()}
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print("Transcription error:", error)
+
+        raise HTTPException(
+            status_code=502,
+            detail="Audio transcription failed. Please try again."
+        )
+
