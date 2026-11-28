@@ -755,6 +755,31 @@ h1 {
 /* placeholders */
 .note-placeholder span { font-size: 0; width: 46px; height: 46px; margin: 0 auto 10px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234B2E9A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' %3E%3Cpath d='M6 3h8l4 4v5M6 3v18h8M9 11h5M9 15h3M17 16v6M14 19h6'/%3E%3C/svg%3E") center/contain no-repeat; }
 .note-placeholder { background: #F8F6FE; border-color: #DDD5F3; }
+
+/* SEGMENT / TIMESTAMP VIEW */
+
+.segment-view {
+  min-height: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: #F7F5FD;
+  border: 1.5px dashed #D3C9F0;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.9;
+  color: var(--text);
+}
+
+.seg-line { padding: 1px 0; }
+
+.seg-time {
+  font-family: "Courier New", Courier, monospace;
+  color: var(--purple);
+  font-weight: 700;
+  font-size: 11px;
+  user-select: none;
+}
 </style>
 </head>
 
@@ -894,9 +919,21 @@ h1 {
             Insert demo lecture
           </button>
 
+          <button class="btn" id="uploadBtn" onclick="document.getElementById('audioFileInput').click()">
+            📎 Upload audio
+          </button>
+
           <button class="btn" onclick="clearAll()">
             Clear session
           </button>
+
+          <input
+            type="file"
+            id="audioFileInput"
+            accept=".mp3,.wav,.m4a,audio/*"
+            style="display:none"
+            onchange="uploadAudio()"
+          >
 
         </div>
 
@@ -955,6 +992,12 @@ h1 {
           placeholder="Type or paste your own lecture here. You can also use the microphone above. The demo lecture, if inserted, can be edited or deleted."
           spellcheck="true"
         ></textarea>
+
+        <div id="segmentView" class="segment-view" style="display:none" aria-label="Timestamped transcript"></div>
+
+        <div style="margin-top:9px">
+          <button class="btn" id="toggleViewBtn" onclick="toggleView()">📋 View timestamps</button>
+        </div>
 
         <div class="editor-hint">
           This box is editable. Click inside it to type, paste,

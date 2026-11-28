@@ -72,6 +72,12 @@ def create_database():
                 ADD COLUMN user_id INTEGER
             """)
 
+        if "segments" not in lecture_columns:
+            conn.execute("""
+                ALTER TABLE lectures
+                ADD COLUMN segments TEXT
+            """)
+
         conn.commit()
 
 
@@ -110,6 +116,7 @@ class SaveLectureRequest(BaseModel):
     title: str
     transcript: str
     notes: dict | None = None
+    segments: list | None = None
 
 
 # --------------------------------------------------
@@ -280,6 +287,12 @@ def save_lecture(request: SaveLectureRequest):
         else None
     )
 
+    segments_json = (
+        json.dumps(request.segments)
+        if request.segments is not None
+        else None
+    )
+
     created_at = datetime.now(timezone.utc).isoformat()
 
     with get_connection() as conn:
@@ -287,14 +300,15 @@ def save_lecture(request: SaveLectureRequest):
         cursor = conn.execute(
             """
             INSERT INTO lectures
-            (title, transcript, notes, created_at, user_id)
-            VALUES (?, ?, ?, ?, NULL)
+            (title, transcript, notes, created_at, user_id, segments)
+            VALUES (?, ?, ?, ?, NULL, ?)
             """,
             (
                 title,
                 transcript,
                 notes_json,
-                created_at
+                created_at,
+                segments_json
             )
         )
 
@@ -368,6 +382,16 @@ def get_lecture(lecture_id: int):
 
         lecture["notes"] = None
 
+    if lecture.get("segments"):
+
+        lecture["segments"] = json.loads(
+            lecture["segments"]
+        )
+
+    else:
+
+        lecture["segments"] = None
+
     return lecture
 
 
@@ -425,8 +449,24 @@ async def transcribe_audio(
         prompt = f"""
         Transcribe this audio accurately.
         The expected language is {language}.
-        Return only the spoken words as text.
-        Do not add explanations.
+
+        Split the transcription into segments of roughly 20 to 40 seconds each.
+        Estimate the start time of each segment in integer seconds from the
+        beginning of the audio.
+
+        Return valid JSON with this exact structure:
+        {{
+            "segments": [
+                {{"start_sec": 0, "text": "Spoken words for the first segment"}},
+                {{"start_sec": 25, "text": "Spoken words for the next segment"}}
+            ]
+        }}
+
+        Rules:
+        - Each segment should contain roughly 20 to 40 seconds of spoken content.
+        - start_sec must be an integer (seconds from the start of the audio).
+        - text must contain only the spoken words, with no summaries or commentary.
+        - Do not include any text outside the JSON structure.
         """
 
         response = client.models.generate_content(
@@ -437,18 +477,38 @@ async def transcribe_audio(
                     data=audio_data,
                     mime_type=mime_type
                 )
-            ]
+            ],
+            config={
+                "response_mime_type": "application/json"
+            }
         )
 
-        transcription = response.text or ""
+        result = json.loads(response.text)
+        raw_segments = result.get("segments", [])
 
-        if not transcription.strip():
+        # Validate and clean each segment.
+        clean_segments = []
+        for s in raw_segments:
+            text = str(s.get("text", "")).strip()
+            if text:
+                clean_segments.append({
+                    "start_sec": (
+                        int(s["start_sec"])
+                        if s.get("start_sec") is not None
+                        else None
+                    ),
+                    "text": text
+                })
+
+        if not clean_segments:
             raise HTTPException(
                 status_code=502,
                 detail="No transcription was returned."
             )
 
-        return {"text": transcription.strip()}
+        full_text = " ".join(s["text"] for s in clean_segments)
+
+        return {"text": full_text, "segments": clean_segments}
 
     except HTTPException:
         raise

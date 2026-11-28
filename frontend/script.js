@@ -8,8 +8,13 @@ let recognition = null;
 let listening = false;
 let transcript = "";
 let lastNotes = null;
+let segments = [];
+let recordingStartTime = null;
+let viewMode = "text";
 
-const API_URL = "https://lecture-ai-0n8q.onrender.com";
+const API_URL = ["localhost", "127.0.0.1"].includes(location.hostname)
+    ? "http://127.0.0.1:8000"
+    : "https://lecture-ai-0n8q.onrender.com";
 
 
 function $(id) {
@@ -62,6 +67,7 @@ function updateTranscript() {
 
 $("transcript").addEventListener("input", () => {
     syncTranscriptFromEditor();
+    resplitSegments();
 
     setStatus(
         "Transcript updated. You can generate notes from this text."
@@ -118,6 +124,10 @@ function toggleMic() {
                 event.results[i][0].transcript.trim();
 
             if (event.results[i].isFinal && spokenText) {
+                const start_sec = recordingStartTime != null
+                    ? Math.round((Date.now() - recordingStartTime) / 1000)
+                    : null;
+                segments.push({ start_sec, text: spokenText });
                 transcript += (transcript ? " " : "") + spokenText;
             } else {
                 interim += spokenText;
@@ -149,6 +159,7 @@ function toggleMic() {
     try {
         recognition.start();
 
+        recordingStartTime = Date.now();
         listening = true;
 
         $("micBtn").classList.add("recording");
@@ -232,7 +243,10 @@ function clearAll() {
 
     transcript = "";
     lastNotes = null;
+    segments = [];
+    recordingStartTime = null;
 
+    showTextView();
     updateTranscript();
 
     $("notesContent").className = "note-placeholder";
@@ -254,6 +268,143 @@ function clearAll() {
     setStatus(
         "Session cleared. You can now add a new lecture."
     );
+}
+
+
+/* ==========================================
+   SEGMENT HELPERS AND TIMESTAMP VIEW
+   ========================================== */
+
+function formatTime(sec) {
+    if (sec == null) return "--:--";
+    const m = Math.floor(sec / 60).toString().padStart(2, "0");
+    const s = (sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+}
+
+function resplitSegments() {
+    const text = $("transcript").value.trim();
+    if (!text) {
+        segments = [];
+        return;
+    }
+    const parts = text.split(/\n+/).filter(p => p.trim());
+    segments = parts.length > 1
+        ? parts.map(part => ({ start_sec: null, text: part.trim() }))
+        : [{ start_sec: null, text: text }];
+}
+
+function renderSegmentView() {
+    const view = $("segmentView");
+    if (!view) return;
+    if (!segments || segments.length === 0) {
+        view.textContent =
+            "No timestamped segments yet. Use the microphone or upload an audio file.";
+        return;
+    }
+    view.innerHTML = segments.map(seg =>
+        `<div class="seg-line"><span class="seg-time">[${escapeHTML(formatTime(seg.start_sec))}]</span>\u00a0${escapeHTML(seg.text)}</div>`
+    ).join("");
+}
+
+function showSegmentView() {
+    $("transcript").style.display = "none";
+    const view = $("segmentView");
+    if (view) view.style.display = "block";
+    const btn = $("toggleViewBtn");
+    if (btn) btn.textContent = "✏️ Edit as text";
+    viewMode = "segments";
+    renderSegmentView();
+}
+
+function showTextView() {
+    $("transcript").style.display = "block";
+    const view = $("segmentView");
+    if (view) view.style.display = "none";
+    const btn = $("toggleViewBtn");
+    if (btn) btn.textContent = "📋 View timestamps";
+    viewMode = "text";
+}
+
+function toggleView() {
+    if (viewMode === "text") {
+        showSegmentView();
+    } else {
+        showTextView();
+    }
+}
+
+
+/* ==========================================
+   UPLOAD AUDIO FILE
+   ========================================== */
+
+async function uploadAudio() {
+    const fileInput = $("audioFileInput");
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+        setStatus("Please select an audio file first.", true);
+        return;
+    }
+
+    const file = fileInput.files[0];
+    const btn = $("uploadBtn");
+
+    if (btn) { btn.disabled = true; btn.textContent = "Uploading..."; }
+    setStatus("Uploading and transcribing audio — this may take a moment...");
+
+    try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("language", $("lang") ? $("lang").value : "en");
+
+        let response;
+        try {
+            response = await fetch(API_URL + "/transcribe", {
+                method: "POST",
+                body: formData
+            });
+        } catch {
+            throw new Error(
+                "Cannot connect to the backend. Please check whether the server is running."
+            );
+        }
+
+        let data;
+        const ct = response.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+            data = await response.json();
+        } else {
+            data = await response.text();
+        }
+
+        if (!response.ok) {
+            const detail = typeof data === "object"
+                ? data.detail || data.error
+                : data;
+            throw new Error(detail || "The server returned an error.");
+        }
+
+        segments = data.segments || [];
+        transcript = data.text || segments.map(s => s.text).join(" ");
+
+        updateTranscript();
+
+        if (segments.length > 0) {
+            showSegmentView();
+        }
+
+        setStatus(
+            "Audio transcribed: " + segments.length +
+            (segments.length === 1 ? " segment." : " segments.")
+        );
+
+        fileInput.value = "";
+
+    } catch (error) {
+        setStatus("Upload failed: " + error.message, true);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "📎 Upload audio"; }
+    }
 }
 
 
@@ -567,7 +718,8 @@ async function saveLecture() {
         const result = await postJSON("/api/lectures", {
             title: title,
             transcript: transcript,
-            notes: lastNotes
+            notes: lastNotes,
+            segments: segments.length > 0 ? segments : null
         });
 
         setStatus(
@@ -682,10 +834,17 @@ async function openLecture(id) {
 
         transcript = lecture.transcript || "";
         lastNotes = lecture.notes || null;
+        segments = lecture.segments || [];
 
         updateTranscript();
 
         $("lectureTitle").value = lecture.title || "";
+
+        if (segments.length > 0) {
+            showSegmentView();
+        } else {
+            showTextView();
+        }
 
         if (lastNotes) {
             renderNotes(lastNotes);
